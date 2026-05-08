@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  mc-server:
+    image: ${CRAFTBOX_IMAGE:-ghcr.io/your-org/craftbox:latest}
+    container_name: craftbox-${CRAFTBOX_INSTANCE:-default}-server
+    restart: unless-stopped
+    ports:
+      - "${SERVER_PORT:-25565}:25565"
+    environment:
+      ACCEPT_EULA: "true"
+      JVM_OPTS: "${JVM_OPTS:--Xms1G -Xmx2G}"
+      # Customize these via environment variables or by editing directly:
+      MOTD: "${MOTD:-A Minecraft Server}"
+      MAX_PLAYERS: "${MAX_PLAYERS:-20}"
+      DIFFICULTY: "${DIFFICULTY:-normal}"
+      GAMEMODE: "${GAMEMODE:-survival}"
+      VIEW_DISTANCE: "${VIEW_DISTANCE:-10}"
+      SIMULATION_DISTANCE: "${SIMULATION_DISTANCE:-10}"
+      ONLINE_MODE: "${ONLINE_MODE:-true}"
+      PVP: "${PVP:-true}"
+      SPAWN_ANIMALS: "${SPAWN_ANIMALS:-true}"
+      SPAWN_MONSTERS: "${SPAWN_MONSTERS:-true}"
+      # Enable RCON if desired:
+      # ENABLE_RCON: "true"
+      # RCON_PASSWORD: "your-secret-password"
+    volumes:
+      - craftbox_${CRAFTBOX_INSTANCE:-default}_data:/opt/minecraft/data
+      - craftbox_${CRAFTBOX_INSTANCE:-default}_logs:/opt/minecraft/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  alloy:
+    image: grafana/alloy:latest
+    container_name: craftbox-${CRAFTBOX_INSTANCE:-default}-alloy
+    restart: unless-stopped
+    depends_on:
+      - mc-server
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - craftbox_${CRAFTBOX_INSTANCE:-default}_logs:/var/log/mc:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      LOKI_URL: ${LOKI_URL:-http://localhost:3100}
+      LOKI_USERNAME: ${LOKI_USERNAME:-}
+      LOKI_PASSWORD: ${LOKI_PASSWORD:-}
+      CRAFTBOX_INSTANCE: ${CRAFTBOX_INSTANCE:-default}
+    command:
+      - run
+      - /etc/alloy/config.alloy
+    ports:
+      - "${ALLOY_PORT:-12345}:12345"
+
+volumes:
+  craftbox_${CRAFTBOX_INSTANCE:-default}_data:
+    driver: local
+  craftbox_${CRAFTBOX_INSTANCE:-default}_logs:
+    driver: local

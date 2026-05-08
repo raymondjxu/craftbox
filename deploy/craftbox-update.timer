@@ -1,0 +1,15 @@
+[Unit]
+Description=Daily Craftbox Update Timer (Instance: {{INSTANCE}})
+Documentation=https://github.com/raymondjxu/craftbox
+Requires=craftbox-update@{{INSTANCE}}.service
+
+[Timer]
+# Run daily at 2 AM
+OnCalendar=daily
+OnCalendar=02:00
+# Run 10 minutes after boot if timer was skipped
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

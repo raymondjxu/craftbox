@@ -1,0 +1,81 @@
+# server.properties template for Fabric Minecraft server
+# Values can be overridden via environment variables (MOTD, MAX_PLAYERS, etc.)
+# This is a baseline configuration; adjust as needed.
+
+server-port=25565
+server-ip=
+
+# MOTD (Message of the Day)
+motd=${MOTD:-A Fabric Minecraft Server}
+
+# Max players
+max-players=${MAX_PLAYERS:-20}
+
+# Difficulty: peaceful, easy, normal, hard
+difficulty=${DIFFICULTY:-normal}
+
+# Gamemode: survival, creative, adventure, spectator
+gamemode=${GAMEMODE:-survival}
+
+# PVP
+pvp=${PVP:-true}
+
+# View distance (chunks)
+view-distance=${VIEW_DISTANCE:-10}
+
+# Simulation distance
+simulation-distance=${SIMULATION_DISTANCE:-10}
+
+# Network compression
+network-compression-threshold=256
+
+# Online mode (requires authentication; set false for LAN/testing)
+online-mode=${ONLINE_MODE:-true}
+
+# Spawn protection (0 = disabled)
+spawn-protection=${SPAWN_PROTECTION:-16}
+
+# Enable command blocks
+enable-command-blocks=${ENABLE_COMMAND_BLOCKS:-false}
+
+# Spawn animals
+spawn-animals=${SPAWN_ANIMALS:-true}
+
+# Spawn monsters
+spawn-monsters=${SPAWN_MONSTERS:-true}
+
+# Enable query
+enable-query=false
+
+# Query port
+query.port=25565
+
+# Enable RCON
+enable-rcon=${ENABLE_RCON:-false}
+
+# RCON port
+rcon.port=25575
+
+# RCON password (only used if enable-rcon=true)
+rcon.password=${RCON_PASSWORD:-}
+
+# Level seed
+level-seed=${LEVEL_SEED:-}
+
+# Level name
+level-name=world
+
+# Level type
+level-type=minecraft\:normal
+
+# Allow nether
+allow-nether=${ALLOW_NETHER:-true}
+
+# Allow flight
+allow-flight=${ALLOW_FLIGHT:-false}
+
+# Hardcore
+hardcore=${HARDCORE:-false}
+
+# White list
+white-list=${WHITE_LIST:-false}

@@ -1,0 +1,2 @@
+Place any vendored mod JARs here. Ensure they are also committed with Git LFS enabled.
+Each vendored mod should be referenced in mods/manifest.yaml with source: vendored.

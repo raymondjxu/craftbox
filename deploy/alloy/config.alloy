@@ -1,0 +1,78 @@
+// Grafana Alloy config for collecting logs from Craftbox Minecraft server
+// Logs are shipped to a Loki instance configured via environment variables
+
+logging {
+  level  = "info"
+  format = "json"
+}
+
+// Docker container log discovery
+loki.source.docker "craftbox" {
+  host           = "unix:///var/run/docker.sock"
+  targets        = discovery.docker.containers.targets
+  relabel_rules  = discovery.relabel.docker_containers.rules
+  forward_to     = [loki.write.loki_endpoint.receiver]
+}
+
+// Docker container discovery
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// Relabel rules for Docker containers
+discovery.relabel "docker_containers" {
+  targets = discovery.docker.containers.targets
+
+  // Filter to only our Minecraft server container (matches instance name)
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "craftbox-${CRAFTBOX_INSTANCE|-default}-server"
+    action        = "keep"
+  }
+
+  // Set service label with instance name
+  rule {
+    target_label = "service"
+    replacement  = "craftbox-${CRAFTBOX_INSTANCE|-default}"
+  }
+
+  // Set hostname label
+  rule {
+    target_label = "host"
+    replacement  = env("HOSTNAME")
+  }
+
+  // Keep container name for reference
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    target_label  = "container"
+  }
+}
+
+// Alternative: File-based log discovery (if using Docker json-file logs)
+// Uncomment to use alongside or instead of Docker discovery
+// loki.source.file "craftbox_logs" {
+//   targets    = [
+//     {
+//       __path__  = "/var/log/mc/containers/*/*.log"
+//       service   = "craftbox"
+//       host      = env("HOSTNAME")
+//     }
+//   ]
+//   forward_to = [loki.write.loki_endpoint.receiver]
+// }
+
+// Loki endpoint (reads credentials from environment)
+loki.write "loki_endpoint" {
+  endpoint {
+    url = env("LOKI_URL")
+
+    // Basic auth if provided
+    basic_auth {
+      username = env("LOKI_USERNAME")
+      password = env("LOKI_PASSWORD")
+    }
+  }
+
+  tenant_id = "craftbox"
+}
