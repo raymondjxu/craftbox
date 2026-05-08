@@ -1,9 +1,9 @@
 #!/bin/bash
 # Craftbox installation script
 # Detects OS, installs Docker, deploys compose stack, and configures auto-updates.
-# Supports multiple instances on the same host (each with its own directory and systemd units).
+# Supports multiple instances on the same host (each with its own directory and optional systemd units).
 # Usage: curl https://raw.githubusercontent.com/raymondjxu/craftbox/main/deploy/install.sh | bash
-#        or: bash install.sh [--instance NAME] [--tag TAG] [--loki-url URL]
+#        or: bash install.sh [--instance NAME] [--craftbox-dir PATH] [--tag TAG] [--loki-url URL] [--skip-docker] [--skip-systemd]
 #
 # Examples:
 #   bash install.sh                    # Single instance in /opt/craftbox
@@ -14,17 +14,18 @@ set -e
 
 # Defaults
 CRAFTBOX_INSTANCE="${CRAFTBOX_INSTANCE:-default}"
-if [ "$CRAFTBOX_INSTANCE" = "default" ]; then
-    CRAFTBOX_DIR="${CRAFTBOX_DIR:-/opt/craftbox}"
-else
-    CRAFTBOX_DIR="${CRAFTBOX_DIR:-/opt/craftbox-${CRAFTBOX_INSTANCE}}"
+CRAFTBOX_DIR_SPECIFIED=0
+if [ -n "${CRAFTBOX_DIR+x}" ]; then
+    CRAFTBOX_DIR_SPECIFIED=1
 fi
+CRAFTBOX_DIR="${CRAFTBOX_DIR:-}"
 CRAFTBOX_REPO="${CRAFTBOX_REPO:-https://raw.githubusercontent.com/raymondjxu/craftbox/main}"
 CRAFTBOX_TAG="${CRAFTBOX_TAG:-latest}"
 LOKI_URL=""
 LOKI_USERNAME=""
 LOKI_PASSWORD=""
 SKIP_DOCKER=0
+SKIP_SYSTEMD=0
 NO_TLS_VERIFY=""
 
 # Colors
@@ -46,6 +47,20 @@ log_error() {
 }
 
 detect_os() {
+    local uname_out
+    uname_out="$(uname -s)"
+    if [ "$uname_out" = "Darwin" ]; then
+        OS="macos"
+        if command -v sw_vers >/dev/null 2>&1; then
+            VER="$(sw_vers -productVersion)"
+        else
+            VER="unknown"
+        fi
+        log_info "Detected macOS: $VER"
+        FAMILY="mac"
+        return
+    fi
+
     if [ -f /etc/os-release ]; then
         . /etc/os-release
         OS=$ID
@@ -71,7 +86,36 @@ detect_os() {
     esac
 }
 
+set_default_craftbox_dir() {
+    if [ "$CRAFTBOX_DIR_SPECIFIED" -eq 1 ]; then
+        return
+    fi
+
+    local base_dir
+    if [ "$FAMILY" = "mac" ]; then
+        base_dir="$HOME"
+    else
+        base_dir="/opt"
+    fi
+
+    if [ "$CRAFTBOX_INSTANCE" = "default" ]; then
+        CRAFTBOX_DIR="$base_dir/craftbox"
+    else
+        CRAFTBOX_DIR="$base_dir/craftbox-${CRAFTBOX_INSTANCE}"
+    fi
+}
+
 install_docker() {
+    if [ "$FAMILY" = "mac" ]; then
+        if command -v docker &> /dev/null; then
+            log_info "Docker is already installed: $(docker --version)"
+            return 0
+        fi
+
+        log_error "Docker Desktop is required on macOS. Install it from: https://docs.docker.com/desktop/install/mac-install/"
+        exit 1
+    fi
+
     if command -v docker &> /dev/null; then
         log_info "Docker is already installed: $(docker --version)"
         return 0
@@ -110,10 +154,14 @@ ensure_docker_compose() {
 
 create_craftbox_directory() {
     log_info "Creating $CRAFTBOX_DIR..."
-    sudo mkdir -p "$CRAFTBOX_DIR"
-    sudo chown "$(id -u):$(id -g)" "$CRAFTBOX_DIR" 2>/dev/null || {
-        log_warn "Could not change ownership of $CRAFTBOX_DIR. You may need sudo to manage it."
-    }
+    if [ "$FAMILY" = "mac" ]; then
+        mkdir -p "$CRAFTBOX_DIR"
+    else
+        sudo mkdir -p "$CRAFTBOX_DIR"
+        sudo chown "$(id -u):$(id -g)" "$CRAFTBOX_DIR" 2>/dev/null || {
+            log_warn "Could not change ownership of $CRAFTBOX_DIR. You may need sudo to manage it."
+        }
+    fi
     cd "$CRAFTBOX_DIR"
 }
 
@@ -152,19 +200,32 @@ prompt_loki_config() {
     log_info "Configuring Grafana Loki integration..."
     echo ""
     echo "Grafana Alloy will ship server logs to Loki."
-    echo "Leave blank to skip Loki integration (logs only stay in container)."
+    echo "Leave blank to use the default (http://localhost:3100)."
     echo ""
 
-    read -p "Loki endpoint URL (e.g., http://loki.example.com:3100): " LOKI_URL
-    
-    if [ -z "$LOKI_URL" ]; then
-        log_warn "Loki integration skipped."
+    local prompt_in="/dev/stdin"
+    if [ ! -t 0 ] && [ -r /dev/tty ]; then
+        prompt_in="/dev/tty"
+    fi
+
+    if ! read -r -p "Loki endpoint URL (e.g., http://loki.example.com:3100): " LOKI_URL < "$prompt_in"; then
+        log_warn "No interactive input detected; defaulting Loki URL to http://localhost:3100."
         LOKI_URL="http://localhost:3100"
         return
     fi
 
-    read -p "Loki username (leave blank if no auth): " LOKI_USERNAME
-    read -sp "Loki password (leave blank if no auth): " LOKI_PASSWORD
+    if [ -z "$LOKI_URL" ]; then
+        log_warn "No Loki endpoint provided; defaulting to http://localhost:3100."
+        LOKI_URL="http://localhost:3100"
+        return
+    fi
+
+    if ! read -r -p "Loki username (leave blank if no auth): " LOKI_USERNAME < "$prompt_in"; then
+        LOKI_USERNAME=""
+    fi
+    if ! read -r -s -p "Loki password (leave blank if no auth): " LOKI_PASSWORD < "$prompt_in"; then
+        LOKI_PASSWORD=""
+    fi
     echo ""
 
     log_info "Loki endpoint: $LOKI_URL"
@@ -227,6 +288,12 @@ EOF
 }
 
 install_systemd_units() {
+    if [ "$SKIP_SYSTEMD" -eq 1 ]; then
+        chmod +x craftbox-update.sh
+        log_warn "Skipping systemd units (not supported on this OS)."
+        return 0
+    fi
+
     log_info "Installing systemd units..."
 
     # Generate instance-specific service names
@@ -288,13 +355,22 @@ ${YELLOW}Next steps:${NC}
 4. Add mods by updating and rebuilding the image
 
 ${YELLOW}Auto-updates:${NC}
-A systemd timer will check for new images daily.
-Status: systemctl status craftbox-update@${CRAFTBOX_INSTANCE}.timer
-To manually update now:
-  $CRAFTBOX_DIR/craftbox-update.sh
+EOF
+        if [ "$SKIP_SYSTEMD" -eq 1 ]; then
+                echo "Systemd is not available, so auto-updates are disabled."
+                echo "To update manually:"
+                echo "  $CRAFTBOX_DIR/craftbox-update.sh"
+        else
+                echo "A systemd timer will check for new images daily."
+                echo "Status: systemctl status craftbox-update@${CRAFTBOX_INSTANCE}.timer"
+                echo "To manually update now:"
+                echo "  $CRAFTBOX_DIR/craftbox-update.sh"
+        fi
+
+        cat << EOF
 
 ${YELLOW}Managing multiple instances:${NC}
-Each instance has its own directory and systemd units.
+Each instance has its own directory and docker compose stack.
 To run another instance:
   bash install.sh --instance vanilla
   bash install.sh --instance modded
@@ -329,15 +405,11 @@ main() {
         case "$1" in
             --instance)
                 CRAFTBOX_INSTANCE="$2"
-                if [ "$CRAFTBOX_INSTANCE" = "default" ]; then
-                    CRAFTBOX_DIR="/opt/craftbox"
-                else
-                    CRAFTBOX_DIR="/opt/craftbox-${CRAFTBOX_INSTANCE}"
-                fi
                 shift 2
                 ;;
             --craftbox-dir)
                 CRAFTBOX_DIR="$2"
+                CRAFTBOX_DIR_SPECIFIED=1
                 shift 2
                 ;;
             --repo)
@@ -360,6 +432,10 @@ main() {
                 SKIP_DOCKER=1
                 shift
                 ;;
+            --skip-systemd)
+                SKIP_SYSTEMD=1
+                shift
+                ;;
             *)
                 log_error "Unknown option: $1"
                 exit 1
@@ -372,6 +448,13 @@ main() {
 
     # Detect OS
     detect_os
+
+    if [ "$FAMILY" = "mac" ]; then
+        SKIP_SYSTEMD=1
+    fi
+
+    # Set instance directory defaults once OS is known
+    set_default_craftbox_dir
 
     # Install Docker if needed
     if [ $SKIP_DOCKER -eq 0 ]; then
