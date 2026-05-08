@@ -1,3 +1,6 @@
+*This project was generated with GitHub Copilot and Claude Code and is intended for my personal use. There's a lot of dumb design choices that I wouldn't have made if I wrote this by hand. Use at your own risk.*
+
+
 # Craftbox — Plug-and-Play Fabric Minecraft Server
 
 A production-ready Docker-based [Fabric Minecraft](https://fabricmc.net/) server with:
@@ -34,7 +37,7 @@ The installer will:
 - Start the server
 
 ### 3. Join the Server
-Connect to `localhost:25565` (or your server's IP) in Minecraft 1.21.4 with Fabric.
+Connect to `localhost:25565` (or your server's IP) in Minecraft 26.1.x with Fabric.
 
 ### 4. View Logs
 ```bash
@@ -168,7 +171,7 @@ docker run --rm -v craftbox_default_data:/data \
 
 ### Datapack Notes
 
-- Datapacks must be valid for Minecraft 1.21.4 (configured in `mods/manifest.yaml`)
+- Datapacks must be valid for Minecraft 26.1.x (configured in `mods/manifest.yaml`)
 - Each datapack should be a `.zip` file containing a `pack.mcmeta` file
 - Datapacks are loaded at server startup; changes require a restart
 - Player data and world state persist alongside datapacks
@@ -357,7 +360,7 @@ pip install pyyaml mcstatus
 python scripts/resolve_mods.py --manifest mods/manifest.yaml --out build/mods
 
 # Build image
-docker build --build-arg JAVA_VERSION=21 -t craftbox-test:latest docker/
+docker build --build-arg JAVA_VERSION=25 -t craftbox-test:latest docker/
 
 # Verify it boots
 python scripts/verify_server.py craftbox-test:latest --timeout 240 --test-persistence
@@ -454,7 +457,7 @@ Pull requests welcome! Areas for enhancement:
 
 - **Issues**: GitHub Issues
 - **Discussions**: GitHub Discussions
-- **Minecraft Version**: 1.21.4 (customizable via `mods/manifest.yaml`)
+- **Minecraft Version**: 26.1.x (customizable via `mods/manifest.yaml`)
 - **Fabric Loader**: 0.16.11 (customizable via `mods/manifest.yaml`)
 
 ---

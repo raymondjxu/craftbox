@@ -8,12 +8,24 @@
 # 3. Right-click the .jar download button → Copy link address to get the download URL
 # 4. Extract the version_id from the URL: https://cdn.modrinth.com/data/{project_id}/versions/{version_id}/{filename}
 
-minecraft_version: "1.21.4"
+minecraft_version: "26.1.2"
 fabric_loader_version: "0.16.11"
-java_version: "21"
+java_version: "25"
 
 mods:
   # Default optimization & logging mods
+  - slug: "fabric-language-kotlin"
+    version_id: "1.13.11+kotlin.2.3.21"  # https://modrinth.com/mod/fabric-language-kotlin
+    source: modrinth
+
+  - fabric-api:
+    version_id: "0.147.0+26.1.2"  # https://modrinth.com/mod/fabric-api
+    source: modrinth
+
+  - luckperms:
+    version_id: "v5.5.42-fabric"  # https://modrinth.com/mod/luckperms
+    source: modrinth
+
   - slug: "lithium"
     version_id: "mc26.1.2-0.24.2-fabric"  # https://modrinth.com/mod/lithium
     source: modrinth

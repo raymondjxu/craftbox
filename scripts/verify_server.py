@@ -52,10 +52,20 @@ def verify_server(image, host='127.0.0.1', port=25565, timeout=240, test_persist
     
     volume_name = f"verify_{int(time.time())}"
     container_id = None
-    
+    volume_created = False
+
     try:
         print(f"Starting verification of image {image}...", file=sys.stderr)
-        
+
+        # Pre-create the volume so cleanup is always well-defined, even if
+        # `docker run` fails before it would lazily create one.
+        print(f"Creating volume {volume_name}...", file=sys.stderr)
+        result = run_command(f"docker volume create {volume_name}", capture_output=True, check=False)
+        if result.returncode != 0:
+            print(f"ERROR: Failed to create volume: {result.stderr}", file=sys.stderr)
+            return False
+        volume_created = True
+
         # Launch server in container
         print(f"Launching container with volume {volume_name}...", file=sys.stderr)
         cmd = (
@@ -187,8 +197,9 @@ def verify_server(image, host='127.0.0.1', port=25565, timeout=240, test_persist
             run_command(f"docker stop {container_id}", check=False)
             run_command(f"docker rm {container_id}", check=False)
         
-        print(f"Cleaning up volume {volume_name}...", file=sys.stderr)
-        run_command(f"docker volume rm {volume_name}", check=False)
+        if volume_created:
+            print(f"Cleaning up volume {volume_name}...", file=sys.stderr)
+            run_command(f"docker volume rm {volume_name}", check=False, capture_output=True)
 
 
 def main():

@@ -120,25 +120,28 @@ create_craftbox_directory() {
 download_files() {
     log_info "Downloading deployment files from $CRAFTBOX_REPO..."
 
+    # Map of remote source path -> local destination (relative to $CRAFTBOX_DIR).
     local files=(
-        "deploy/docker-compose.yml"
-        "deploy/alloy/config.alloy"
-        "deploy/craftbox-update.sh"
-        "deploy/craftbox-update.service"
-        "deploy/craftbox-update.timer"
+        "deploy/docker-compose.yml:docker-compose.yml"
+        "deploy/alloy/config.alloy:alloy/config.alloy"
+        "deploy/craftbox-update.sh:craftbox-update.sh"
+        "deploy/craftbox-update.service:craftbox-update.service"
+        "deploy/craftbox-update.timer:craftbox-update.timer"
     )
 
-    for file in "${files[@]}"; do
-        local dest_file="$(basename "$file")"
-        # Create subdirs if needed
-        mkdir -p "$(dirname "$file")"
-        
-        log_info "Downloading $file..."
-        
-        if [ -n "$NO_TLS_VERIFY" ]; then
-            curl -k "$CRAFTBOX_REPO/$file" -o "$file"
-        else
-            curl "$CRAFTBOX_REPO/$file" -o "$file"
+    local curl_opts=(-fsSL)
+    if [ -n "$NO_TLS_VERIFY" ]; then
+        curl_opts+=(-k)
+    fi
+
+    for entry in "${files[@]}"; do
+        local src="${entry%%:*}"
+        local dest="${entry##*:}"
+        mkdir -p "$(dirname "$dest")"
+        log_info "Downloading $src -> $dest..."
+        if ! curl "${curl_opts[@]}" "$CRAFTBOX_REPO/$src" -o "$dest"; then
+            log_error "Failed to download $src"
+            exit 1
         fi
     done
 
@@ -170,39 +173,58 @@ prompt_loki_config() {
 write_env_file() {
     log_info "Writing .env file..."
 
+    # Derive the GHCR image namespace from the configured repo URL so the
+    # generated .env points at a real image (the repo path matches the GHCR
+    # owner/name for repos published from the same source).
+    local image_owner_repo
+    image_owner_repo="$(echo "$CRAFTBOX_REPO" \
+        | sed -E 's#https?://raw\.githubusercontent\.com/##; s#/(main|master)$##')"
+    if [ -z "$image_owner_repo" ]; then
+        image_owner_repo="raymondjxu/craftbox"
+    fi
+
+    env_quote() {
+        local value="$1"
+        value="${value//\\/\\\\}"
+        value="${value//\"/\\\"}"
+        value="${value//\$/\\\$}"
+        printf '"%s"' "$value"
+    }
+
     cat > .env << EOF
 # Craftbox environment configuration (Instance: $CRAFTBOX_INSTANCE)
-CRAFTBOX_INSTANCE=$CRAFTBOX_INSTANCE
-CRAFTBOX_IMAGE=ghcr.io/your-org/craftbox:\${CRAFTBOX_TAG:-$CRAFTBOX_TAG}
+CRAFTBOX_INSTANCE=$(env_quote "$CRAFTBOX_INSTANCE")
+CRAFTBOX_TAG=$(env_quote "$CRAFTBOX_TAG")
+CRAFTBOX_IMAGE=$(env_quote "ghcr.io/${image_owner_repo}:$CRAFTBOX_TAG")
 
 # Network ports (adjust if running multiple instances on same host)
-SERVER_PORT=25565
-ALLOY_PORT=12345
+SERVER_PORT=$(env_quote "25565")
+ALLOY_PORT=$(env_quote "12345")
 
 # Loki credentials for log shipping
-LOKI_URL=$LOKI_URL
-LOKI_USERNAME=$LOKI_USERNAME
-LOKI_PASSWORD=$LOKI_PASSWORD
+LOKI_URL=$(env_quote "$LOKI_URL")
+LOKI_USERNAME=$(env_quote "$LOKI_USERNAME")
+LOKI_PASSWORD=$(env_quote "$LOKI_PASSWORD")
 
 # Minecraft server settings
-MOTD=A Fabric Minecraft Server
-MAX_PLAYERS=20
-DIFFICULTY=normal
-GAMEMODE=survival
-VIEW_DISTANCE=10
-SIMULATION_DISTANCE=10
-ONLINE_MODE=true
-PVP=true
-SPAWN_ANIMALS=true
-SPAWN_MONSTERS=true
+MOTD=$(env_quote "A Fabric Minecraft Server")
+MAX_PLAYERS=$(env_quote "20")
+DIFFICULTY=$(env_quote "normal")
+GAMEMODE=$(env_quote "survival")
+VIEW_DISTANCE=$(env_quote "10")
+SIMULATION_DISTANCE=$(env_quote "10")
+ONLINE_MODE=$(env_quote "true")
+PVP=$(env_quote "true")
+SPAWN_ANIMALS=$(env_quote "true")
+SPAWN_MONSTERS=$(env_quote "true")
 
 # Java VM options
-JVM_OPTS=-Xms1G -Xmx2G
+JVM_OPTS=$(env_quote "-Xms1G -Xmx2G")
 EOF
 
     chmod 600 .env
     log_info ".env file created (and protected with mode 600)"
-}}
+}
 
 install_systemd_units() {
     log_info "Installing systemd units..."

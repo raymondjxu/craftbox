@@ -12,6 +12,6 @@
 #
 # Each datapack must be:
 # - A valid Minecraft datapack ZIP or directory
-# - Compatible with Minecraft 1.21.4 (configured in mods/manifest.yaml)
+# - Compatible with Minecraft 26.1.x (configured in mods/manifest.yaml)
 #
 # Datapacks are loaded by the server at startup from world/datapacks/

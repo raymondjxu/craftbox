@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   mc-server:
     image: ${CRAFTBOX_IMAGE:-ghcr.io/your-org/craftbox:latest}

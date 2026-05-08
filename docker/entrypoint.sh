@@ -16,15 +16,30 @@ DATAPACKS_WORLD="${WORLD_DIR}/datapacks"
 # Ensure required directories exist (volumes will be mounted)
 mkdir -p "${DATA_DIR}" "${LOGS_DIR}"
 
+# Minecraft writes logs to ./logs relative to its cwd. We cd into $DATA_DIR
+# before launch, so symlink ./logs there to the dedicated logs volume.
+ln -sfn "${LOGS_DIR}" "${DATA_DIR}/logs"
+
 # Verify EULA acceptance via environment variable
 if [ "${ACCEPT_EULA}" != "true" ]; then
   echo "ERROR: You must accept the Minecraft EULA by setting ACCEPT_EULA=true"
   exit 1
 fi
 
-# Ensure eula.txt exists with acceptance (baked into image, but double-check)
-if [ ! -f "${MINECRAFT_HOME}/eula.txt" ]; then
-  echo "eula=true" > "${MINECRAFT_HOME}/eula.txt"
+# Ensure eula.txt exists in the data dir (cwd at launch time). Minecraft reads
+# eula.txt relative to its working directory, so the baked copy in
+# /opt/minecraft is not enough once we cd into the volume.
+echo "eula=true" > "${DATA_DIR}/eula.txt"
+
+# Stage mods and config from the image into the data dir so Fabric finds them
+# at ./mods and ./config when launched from $DATA_DIR.
+if [ -d "${MINECRAFT_HOME}/mods" ]; then
+  ln -sfn "${MINECRAFT_HOME}/mods" "${DATA_DIR}/mods"
+fi
+if [ -d "${MINECRAFT_HOME}/config" ]; then
+  # Copy (not symlink) so mods can write to their own config files at runtime.
+  mkdir -p "${DATA_DIR}/config"
+  cp -rn "${MINECRAFT_HOME}/config/." "${DATA_DIR}/config/" 2>/dev/null || true
 fi
 
 # Deploy bundled datapacks on first run (don't overwrite existing datapacks)
@@ -36,42 +51,36 @@ if [ -d "${DATAPACKS_BUNDLED}" ] && [ "$(ls -A "${DATAPACKS_BUNDLED}" 2>/dev/nul
   fi
 fi
 
-# Render server.properties from template
-# Replace ${VAR_NAME} with env var value, falling back to default in template
-render_properties() {
-  local template="$1"
-  local output="$2"
-  
-  # Read template and expand env vars
-  # Use envsubst if available, otherwise fall back to bash variable expansion
-  if command -v envsubst &> /dev/null; then
-    envsubst < "${template}" > "${output}"
-  else
-    # Manual expansion of known variables
-    sed -e "s|\${MOTD:-[^}]*}|${MOTD:-A Fabric Minecraft Server}|g" \
-        -e "s|\${MAX_PLAYERS:-[^}]*}|${MAX_PLAYERS:-20}|g" \
-        -e "s|\${DIFFICULTY:-[^}]*}|${DIFFICULTY:-normal}|g" \
-        -e "s|\${GAMEMODE:-[^}]*}|${GAMEMODE:-survival}|g" \
-        -e "s|\${PVP:-[^}]*}|${PVP:-true}|g" \
-        -e "s|\${VIEW_DISTANCE:-[^}]*}|${VIEW_DISTANCE:-10}|g" \
-        -e "s|\${SIMULATION_DISTANCE:-[^}]*}|${SIMULATION_DISTANCE:-10}|g" \
-        -e "s|\${ONLINE_MODE:-[^}]*}|${ONLINE_MODE:-true}|g" \
-        -e "s|\${SPAWN_PROTECTION:-[^}]*}|${SPAWN_PROTECTION:-16}|g" \
-        -e "s|\${ENABLE_COMMAND_BLOCKS:-[^}]*}|${ENABLE_COMMAND_BLOCKS:-false}|g" \
-        -e "s|\${SPAWN_ANIMALS:-[^}]*}|${SPAWN_ANIMALS:-true}|g" \
-        -e "s|\${SPAWN_MONSTERS:-[^}]*}|${SPAWN_MONSTERS:-true}|g" \
-        -e "s|\${ENABLE_RCON:-[^}]*}|${ENABLE_RCON:-false}|g" \
-        -e "s|\${RCON_PASSWORD:-[^}]*}|${RCON_PASSWORD:-}|g" \
-        -e "s|\${LEVEL_SEED:-[^}]*}||g" \
-        -e "s|\${ALLOW_NETHER:-[^}]*}|${ALLOW_NETHER:-true}|g" \
-        -e "s|\${ALLOW_FLIGHT:-[^}]*}|${ALLOW_FLIGHT:-false}|g" \
-        -e "s|\${HARDCORE:-[^}]*}|${HARDCORE:-false}|g" \
-        -e "s|\${WHITE_LIST:-[^}]*}|${WHITE_LIST:-false}|g" \
-        "${template}" > "${output}"
-  fi
-}
+# Render server.properties from template using envsubst. The template uses
+# bash-style `${VAR:-default}` syntax; we apply defaults here so envsubst sees
+# fully-qualified values (envsubst itself does not understand `:-defaults`).
+: "${MOTD:=A Fabric Minecraft Server}"
+: "${MAX_PLAYERS:=20}"
+: "${DIFFICULTY:=normal}"
+: "${GAMEMODE:=survival}"
+: "${PVP:=true}"
+: "${VIEW_DISTANCE:=10}"
+: "${SIMULATION_DISTANCE:=10}"
+: "${ONLINE_MODE:=true}"
+: "${SPAWN_PROTECTION:=16}"
+: "${ENABLE_COMMAND_BLOCKS:=false}"
+: "${SPAWN_ANIMALS:=true}"
+: "${SPAWN_MONSTERS:=true}"
+: "${ENABLE_RCON:=false}"
+: "${RCON_PASSWORD:=}"
+: "${LEVEL_SEED:=}"
+: "${ALLOW_NETHER:=true}"
+: "${ALLOW_FLIGHT:=false}"
+: "${HARDCORE:=false}"
+: "${WHITE_LIST:=false}"
+export MOTD MAX_PLAYERS DIFFICULTY GAMEMODE PVP VIEW_DISTANCE SIMULATION_DISTANCE \
+  ONLINE_MODE SPAWN_PROTECTION ENABLE_COMMAND_BLOCKS SPAWN_ANIMALS SPAWN_MONSTERS \
+  ENABLE_RCON RCON_PASSWORD LEVEL_SEED ALLOW_NETHER ALLOW_FLIGHT HARDCORE WHITE_LIST
 
-render_properties "${MINECRAFT_HOME}/server.properties.tmpl" "${DATA_DIR}/server.properties"
+# Strip the `:-default` portion so envsubst sees plain `${VAR}` references.
+sed -E 's/\$\{([A-Z_][A-Z0-9_]*):-[^}]*\}/${\1}/g' \
+  "${MINECRAFT_HOME}/server.properties.tmpl" \
+  | envsubst > "${DATA_DIR}/server.properties"
 
 # Clean up template after rendering
 rm -f "${MINECRAFT_HOME}/server.properties.tmpl"

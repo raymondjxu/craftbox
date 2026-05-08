@@ -18,16 +18,48 @@ log_error() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] [ERROR] $1" >&2
 }
 
-# Source environment file to get image name
+read_env_value() {
+    local key="$1"
+    local value
+
+    value="$(awk -F= -v k="$key" '
+        $0 ~ "^[[:space:]]*(export[[:space:]]+)?" k "=" {
+            sub("^[[:space:]]*(export[[:space:]]+)?" k "=", "", $0)
+            print
+            exit
+        }
+    ' "$ENV_FILE")"
+
+    value="$(printf '%s' "$value" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+
+    case "$value" in
+        \"*\")
+            value="${value#\"}"
+            value="${value%\"}"
+            value="${value//\\\\/\\}"
+            value="${value//\\\"/\"}"
+            value="${value//\\\$/\$}"
+            ;;
+        \'*\')
+            value="${value#\'}"
+            value="${value%\'}"
+            ;;
+    esac
+
+    printf '%s' "$value"
+}
+
+# Read image name without sourcing .env (values may contain spaces).
 if [ ! -f "$ENV_FILE" ]; then
     log_error ".env file not found at $ENV_FILE"
     exit 1
 fi
 
-source "$ENV_FILE"
-
 # Use docker compose variable or fall back
-IMAGE="${CRAFTBOX_IMAGE:-ghcr.io/your-org/craftbox:latest}"
+IMAGE="$(read_env_value CRAFTBOX_IMAGE)"
+if [ -z "$IMAGE" ]; then
+    IMAGE="ghcr.io/your-org/craftbox:latest"
+fi
 
 log_info "Checking for updates to $IMAGE..."
 
@@ -35,12 +67,14 @@ log_info "Checking for updates to $IMAGE..."
 cd "$CRAFTBOX_DIR"
 docker compose pull
 
-# Get the digest of the pulled image
-NEW_DIGEST=$(docker inspect "$IMAGE" --format='{{index .RepoDigests 0}}' 2>/dev/null || echo "unknown")
-log_info "Pulled image digest: $NEW_DIGEST"
+# Compare local image IDs (sha256 of the image config) — both `docker inspect
+# <image>` and `docker inspect <container> .Image` return values in the same
+# `sha256:...` namespace, unlike RepoDigests which is the registry manifest
+# digest and is not comparable to a container's image ID.
+NEW_ID=$(docker inspect "$IMAGE" --format='{{.Id}}' 2>/dev/null || echo "")
+log_info "Pulled image ID: ${NEW_ID:-unknown}"
 
-# Get the digest of the currently running container
-RUNNING_CONTAINER=$(docker compose ps -q mc-server 2>/dev/null || echo "")
+RUNNING_CONTAINER=$(docker compose ps -q mc-server 2>/dev/null || true)
 
 if [ -z "$RUNNING_CONTAINER" ]; then
     log_info "No running container found. Starting services..."
@@ -48,18 +82,17 @@ if [ -z "$RUNNING_CONTAINER" ]; then
     exit 0
 fi
 
-RUNNING_DIGEST=$(docker inspect "$RUNNING_CONTAINER" --format='{{index .Image}}' 2>/dev/null || echo "unknown")
-log_info "Running container image: $RUNNING_DIGEST"
+RUNNING_ID=$(docker inspect "$RUNNING_CONTAINER" --format='{{.Image}}' 2>/dev/null || echo "")
+log_info "Running container image ID: ${RUNNING_ID:-unknown}"
 
-# Compare digests
-if [ "$NEW_DIGEST" = "$RUNNING_DIGEST" ] || [ "$RUNNING_DIGEST" = "unknown" ]; then
+if [ -n "$NEW_ID" ] && [ "$NEW_ID" = "$RUNNING_ID" ]; then
     log_info "No updates available. Container is up to date."
     exit 0
 fi
 
 log_info "Update detected! Recreating container..."
-log_info "  Old: $RUNNING_DIGEST"
-log_info "  New: $NEW_DIGEST"
+log_info "  Old: ${RUNNING_ID:-unknown}"
+log_info "  New: ${NEW_ID:-unknown}"
 
 # Recreate container with new image (volumes persist)
 docker compose up -d

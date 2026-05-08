@@ -4,12 +4,12 @@ Documentation=https://github.com/raymondjxu/craftbox
 Requires=craftbox-update@{{INSTANCE}}.service
 
 [Timer]
-# Run daily at 2 AM
-OnCalendar=daily
-OnCalendar=02:00
-# Run 10 minutes after boot if timer was skipped
+# Run daily at 02:00
+OnCalendar=*-*-* 02:00:00
+# Catch up on missed runs after boot
 Persistent=true
 AccuracySec=1min
+RandomizedDelaySec=15min
 
 [Install]
 WantedBy=timers.target

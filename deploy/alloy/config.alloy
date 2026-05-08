@@ -23,17 +23,21 @@ discovery.docker "containers" {
 discovery.relabel "docker_containers" {
   targets = discovery.docker.containers.targets
 
-  // Filter to only our Minecraft server container (matches instance name)
+  // Filter to only our Minecraft server container (matches instance name).
+  // CRAFTBOX_INSTANCE is required at Alloy startup; the install script always
+  // sets it (defaulting to "default"). Note that Docker reports container
+  // names with a leading slash (e.g. "/craftbox-default-server"), and the
+  // `keep` action requires a full-string regex match — hence the leading "/".
   rule {
     source_labels = ["__meta_docker_container_name"]
-    regex         = "craftbox-${CRAFTBOX_INSTANCE|-default}-server"
+    regex         = "/craftbox-" + env("CRAFTBOX_INSTANCE") + "-server"
     action        = "keep"
   }
 
   // Set service label with instance name
   rule {
     target_label = "service"
-    replacement  = "craftbox-${CRAFTBOX_INSTANCE|-default}"
+    replacement  = "craftbox-" + env("CRAFTBOX_INSTANCE")
   }
 
   // Set hostname label

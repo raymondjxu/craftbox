@@ -1,11 +1,12 @@
-ARG JAVA_VERSION=21
+ARG JAVA_VERSION=25
 
 FROM eclipse-temurin:${JAVA_VERSION}-jre-jammy
 
-# Install bash for entrypoint script
+# Runtime tools: bash + envsubst (gettext-base) for entrypoint templating.
+# (HEALTHCHECK uses bash's /dev/tcp; no nc needed.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
-    curl \
+    gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root minecraft user
@@ -35,8 +36,9 @@ RUN chmod +x ./entrypoint.sh
 # Bake EULA acceptance into image
 RUN echo "eula=true" > ./eula.txt
 
-# Set ownership to minecraft user
-RUN chown -R minecraft:minecraft /opt/minecraft
+# Ensure data/log directories exist so volume initialization preserves ownership
+RUN mkdir -p /opt/minecraft/data /opt/minecraft/logs \
+  && chown -R minecraft:minecraft /opt/minecraft
 
 # Switch to non-root user
 USER minecraft
@@ -44,8 +46,8 @@ USER minecraft
 # Expose server port
 EXPOSE 25565
 
-# Health check (optional; uses mcstatus or nc)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD nc -z localhost 25565 || exit 1
+# Health check: bash's /dev/tcp probe avoids needing netcat.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+  CMD bash -c '</dev/tcp/127.0.0.1/25565' || exit 1
 
 ENTRYPOINT ["/opt/minecraft/entrypoint.sh"]
