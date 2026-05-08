@@ -18,11 +18,11 @@ mods:
     version_id: "1.13.11+kotlin.2.3.21"  # https://modrinth.com/mod/fabric-language-kotlin
     source: modrinth
 
-  - fabric-api:
+  - slug: "fabric-api"
     version_id: "0.147.0+26.1.2"  # https://modrinth.com/mod/fabric-api
     source: modrinth
 
-  - luckperms:
+  - slug: "luckperms"
     version_id: "v5.5.42-fabric"  # https://modrinth.com/mod/luckperms
     source: modrinth
 
