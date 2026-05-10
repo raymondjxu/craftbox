@@ -1,0 +1,3 @@
+# Config files go here
+# These will be copied into the Docker image at /opt/minecraft/config/
+# Place subdirectories for individual mods here (e.g., config/modname/modname.json)

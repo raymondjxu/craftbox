@@ -1,0 +1,59 @@
+name: Build & Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install --quiet pyyaml
+
+      - name: Resolve mods
+        run: python scripts/resolve_mods.py --manifest mods/manifest.yaml --out build/mods
+
+      - name: Package server pack
+        run: python scripts/package.py --mods build/mods --config config --datapacks datapacks --server-properties server.properties --out craftbox-pack.tar.gz
+
+      - name: Verify tarball contents
+        run: tar tzf craftbox-pack.tar.gz
+
+      - name: Upload release (latest) on push to main
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes 2>/dev/null || true
+          gh release create latest craftbox-pack.tar.gz \
+            --title "Latest build" \
+            --notes "Built from commit ${{ github.sha }}" \
+            --prerelease
+
+      - name: Upload release on version tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" craftbox-pack.tar.gz \
+            --title "${{ github.ref_name }}" \
+            --generate-notes

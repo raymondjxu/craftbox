@@ -1,0 +1,17 @@
+# Datapacks go here
+# Datapacks are world-specific and will be copied to world/datapacks/ on first boot.
+# Place your .zip datapack files here.
+#
+# Example structure:
+#   datapacks/
+#   ├── my-datapack-1.zip
+#   ├── my-datapack-2.zip
+#   └── another-pack/
+#       └── data/
+#           └── (datapack contents)
+#
+# Each datapack must be:
+# - A valid Minecraft datapack ZIP or directory
+# - Compatible with Minecraft 26.1.x (configured in mods/manifest.yaml)
+#
+# Datapacks are loaded by the server at startup from world/datapacks/
