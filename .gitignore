@@ -2,7 +2,6 @@
 build/
 *.tar.gz
 *.tar
-*.zip
 
 # Local environment
 .env
