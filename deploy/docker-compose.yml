@@ -35,6 +35,8 @@ services:
     image: grafana/alloy:latest
     container_name: craftbox-${CRAFTBOX_INSTANCE:-default}-alloy
     restart: unless-stopped
+    profiles:
+      - logs
     depends_on:
       - mc-server
     volumes:

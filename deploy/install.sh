@@ -3,12 +3,13 @@
 # Detects OS, installs Docker, deploys compose stack, and configures auto-updates.
 # Supports multiple instances on the same host (each with its own directory and optional systemd units).
 # Usage: curl https://raw.githubusercontent.com/raymondjxu/craftbox/main/deploy/install.sh | bash
-#        or: bash install.sh [--instance NAME] [--craftbox-dir PATH] [--tag TAG] [--loki-url URL] [--skip-docker] [--skip-systemd]
+#        or: bash install.sh [--instance NAME] [--craftbox-dir PATH] [--tag TAG] [--loki-url URL] [--enable-logs] [--skip-docker] [--skip-systemd]
 #
 # Examples:
 #   bash install.sh                    # Single instance in /opt/craftbox
 #   bash install.sh --instance vanilla # Instance in /opt/craftbox-vanilla
 #   bash install.sh --instance modded  # Instance in /opt/craftbox-modded
+#   bash install.sh --enable-logs      # Enable optional Alloy log shipping
 
 set -e
 
@@ -24,6 +25,7 @@ CRAFTBOX_TAG="${CRAFTBOX_TAG:-latest}"
 LOKI_URL=""
 LOKI_USERNAME=""
 LOKI_PASSWORD=""
+ENABLE_LOG_SHIPPING="${ENABLE_LOG_SHIPPING:-0}"
 SKIP_DOCKER=0
 SKIP_SYSTEMD=0
 NO_TLS_VERIFY=""
@@ -328,7 +330,11 @@ install_systemd_units() {
 start_services() {
     log_info "Starting Craftbox services..."
 
-    docker compose up -d
+    if [ "$ENABLE_LOG_SHIPPING" -eq 1 ]; then
+        docker compose --profile logs up -d
+    else
+        docker compose up -d
+    fi
 
     log_info "Services started!"
     echo ""
@@ -337,7 +343,9 @@ start_services() {
     echo ""
     log_info "View logs:"
     echo "  docker compose logs -f mc-server"
-    echo "  docker compose logs -f alloy"
+    if [ "$ENABLE_LOG_SHIPPING" -eq 1 ]; then
+        echo "  docker compose logs -f alloy"
+    fi
 }
 
 show_next_steps() {
@@ -377,12 +385,17 @@ To run another instance:
 
 ${YELLOW}Logs via Loki:${NC}
 EOF
-    if [ -z "$LOKI_URL" ] || [ "$LOKI_URL" = "http://localhost:3100" ]; then
-        echo "  No remote Loki endpoint configured."
-        echo "  To enable: edit .env and set LOKI_URL"
+    if [ "$ENABLE_LOG_SHIPPING" -eq 1 ]; then
+        if [ -z "$LOKI_URL" ] || [ "$LOKI_URL" = "http://localhost:3100" ]; then
+            echo "  No remote Loki endpoint configured."
+            echo "  To enable: edit .env and set LOKI_URL"
+        else
+            echo "  Logs are being shipped to: $LOKI_URL"
+            echo "  Query logs in Loki: {service=\"craftbox-${CRAFTBOX_INSTANCE}\"}"
+        fi
     else
-        echo "  Logs are being shipped to: $LOKI_URL"
-        echo "  Query logs in Loki: {service=\"craftbox-${CRAFTBOX_INSTANCE}\"}"
+        echo "  Log shipping is disabled (Alloy profile not enabled)."
+        echo "  To enable: rerun with --enable-logs or set ENABLE_LOG_SHIPPING=1"
     fi
 
     cat << EOF
@@ -422,7 +435,12 @@ main() {
                 ;;
             --loki-url)
                 LOKI_URL="$2"
+                ENABLE_LOG_SHIPPING=1
                 shift 2
+                ;;
+            --enable-logs)
+                ENABLE_LOG_SHIPPING=1
+                shift
                 ;;
             --no-tls-verify)
                 NO_TLS_VERIFY=1
@@ -475,8 +493,8 @@ main() {
     # Create alloy subdirectory
     mkdir -p alloy
 
-    # Configure Loki
-    if [ -z "$LOKI_URL" ]; then
+    # Configure Loki if log shipping is enabled
+    if [ "$ENABLE_LOG_SHIPPING" -eq 1 ] && [ -z "$LOKI_URL" ]; then
         prompt_loki_config
     fi
 

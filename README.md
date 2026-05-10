@@ -219,24 +219,32 @@ cd /opt/craftbox
 docker compose logs -f mc-server
 ```
 
-### Ship Logs to Loki
+### Ship Logs to Loki (Optional)
+
+Craftbox includes an optional Grafana Alloy sidecar for Loki shipping. The
+log shipper is disabled by default and is only started when the `logs` profile
+is enabled.
 
 1. Deploy a Loki instance (e.g., via docker-compose, Grafana Cloud, or your platform)
 2. Update `.env` with Loki credentials:
-   ```bash
-   LOKI_URL=https://your-loki.example.com
-   LOKI_USERNAME=username
-   LOKI_PASSWORD=secret
-   ```
-3. Restart Alloy:
-   ```bash
-   docker compose up -d alloy
-   ```
+  ```bash
+  LOKI_URL=https://your-loki.example.com
+  LOKI_USERNAME=username
+  LOKI_PASSWORD=secret
+  ```
+3. Enable the log shipper profile:
+  ```bash
+  docker compose --profile logs up -d alloy
+  ```
+  If you use `install.sh`, pass `--enable-logs` to enable this profile on first boot.
 4. Query in Grafana:
-   ```
-   {service="craftbox"} 
-   {service="craftbox-vanilla"}  # For named instances
-   ```
+  ```
+  {service="craftbox"}
+  {service="craftbox-vanilla"}  # For named instances
+  ```
+
+If you already run a host-level log agent (e.g., promtail), skip the Alloy
+profile and point your agent at Docker logs instead.
 
 ---
 
@@ -330,8 +338,8 @@ grep ONLINE_MODE /opt/craftbox/.env
 
 ### Loki integration not working
 ```bash
-# Check Alloy logs
-docker compose logs alloy
+# Check Alloy logs (if the logs profile is enabled)
+docker compose --profile logs logs alloy
 
 # Verify credentials
 grep LOKI_ /opt/craftbox/.env
