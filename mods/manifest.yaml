@@ -35,7 +35,7 @@ mods:
     source: modrinth
 
   - slug: "server-replay"
-    version_id: "3.4.1+26.1"  # https://modrinth.com/mod/server-replay
+    version_id: "3.4.2+26.1"  # https://modrinth.com/mod/server-replay
     source: modrinth
 
   - slug: "ledger"
